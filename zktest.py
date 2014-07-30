@@ -5,6 +5,7 @@ import logging
 from os.path import basename, join
 
 from zkclient import ZKClient, zookeeper, watchmethod
+from router import Router
 
 logging.basicConfig(
     level = logging.DEBUG,
@@ -17,12 +18,14 @@ class AppWatcher(object):
 
     TIMEOUT = 10000
     app_list = []
-    def __init__(self, zk_host, root):
+    def __init__(self, zk_host, root, logger):
         self.zk_host = zk_host
         self.root_path = root
-
+        self.logger = logger
         self.zk = ZKClient(self.zk_host, timeout = self.TIMEOUT)
+        self.logger.info("+++++++zookeeper connected++++++++")
         
+    def start(self):
         childrens = self.zk.get_children(self.root_path)
         for i in childrens:
             if i.startswith("tasks:"):
@@ -33,8 +36,8 @@ class AppWatcher(object):
         @watchmethod
         def watcher(event):
             self.init_watcher()
-            log.info(dir(event))
-            log.info(event.type_name)
+            self.logger.info(dir(event))
+            self.logger.info(event.type_name)
             type_name = event.type_name
             path = event.path
             except_node = []
@@ -55,23 +58,32 @@ class AppWatcher(object):
                 for i in temp_children:
                     if i.startswith("tasks:"):
                         self.app_list.append(i)
-#push wrong node to yuanjie's code
             elif type_name == "changed" and path.startswith(self.root_path):
                 try:
                     path.index("tasks:")
-                    log.info(path)
+                    self.logger.info(path)
                     app_name = path.rsplit("/",1)[1]
                     except_node.append(app_name)
                 except Exception, e:
                     pass
-            print except_node
+            self.logger.info(except_node)
+            result = []
+            for i in except_node:
+                try:
+                    result.append(i.split(":",1)[0])
+                except Exception, e:
+                    pass
+            self.logger.info(result)
+            #push node array to yuanjie
+            Router.push(result)
         children = self.zk.get_children(self.root_path, watcher)
         for i in children:
             if i.startswith("tasks:"):
                 self.zk.get(join(self.root_path, i), watcher)
 
 def main():
-    watcher = AppWatcher("9.115.210.54:2181", "/marathon/state")
+    watcher = AppWatcher("9.115.210.54:2181", "/marathon/state",log)
+    watcher.start()
 
 if __name__ == "__main__":
     import time
