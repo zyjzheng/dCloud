@@ -2,34 +2,14 @@
 import httplib 
 import json 
 import os 
-import logging 
 import time
 import etcd
 import traceback
-
-#LOG_FILE="/tmp/install.log"
-
-logger = logging.getLogger()  
-#fileHandler = logging.FileHandler(LOG_FILE)
-
-consoleHandler = logging.StreamHandler()
-#logger.addHandler(fileHandler) 
-logger.addHandler(consoleHandler) 
-formatter = logging.Formatter("%(asctime)s %(levelname)s %(message)s")
-#fileHandler.setFormatter(formatter)
-consoleHandler.setFormatter(formatter)
-#set log level  
-logger.setLevel(logging.INFO)  
-
-
-def getEndpoints():
-    _marathon='9.115.210.55:8080'
-    _etcd='etcd.bluemix.cdl.ibm.com'
-    _vulcand='9.115.210.51:8182'
-    return _marathon,_etcd, _vulcand
-
-def getDomain():
-    return 'de.bluemix.cdl.ibm.com'
+import Queue
+import threading
+import config
+import string
+from log import logger
 
 def sendHttpGetRequest(url, path, parameter, headers):
     _conn = httplib.HTTPConnection(url)
@@ -72,9 +52,6 @@ def sendHttpDeleteRequest(url, path, body, headers):
     _data = _response.read()
     return _response.status,_response.reason,_data
 
-
-
-
 def callRestApi(method, url, path, content=None, headers={"Content-Type":"application/json"}):
     if method == "GET":
         return sendHttpGetRequest(url,path,content, headers)
@@ -108,11 +85,11 @@ def createLocation(url, host, name="default", path="/"):
 def initRouter(url, host):
     createUpstream(url, host)
     createLocation(url, host, "default", "/")
-	
+
 def deleteEndpoint(url, upstream, endpoint):
     _status,_msg,_resp = callRestApi("DELETE", url, "/v1/upstreams/%s/endpoints/%s" %(upstream, endpoint))
     logger.info("delete endpoint %s====> %s status: %d, msg: %s, _resp: %s", upstream, endpoint, _status, _msg, _resp)
-	
+
 def addEndpoint(url, upstream, name, backend):
     _body='''{
         "UpstreamId": "%s",
@@ -124,20 +101,27 @@ def addEndpoint(url, upstream, name, backend):
     _status, _msg, _resp=callRestApi("POST", url, "/v1/upstreams/%s/endpoints" % (upstream), _body)
     logger.info("add endpoint %s====> %s:%s status: %d, msg: %s, _resp: %s", upstream, name, backend, _status, _msg, _resp)
 
-
 def getHosts(url):
     _status,_msg,_resp=callRestApi("GET", url, "/v1/hosts")
     return json.loads(_resp)['Hosts']
-	
-def refreashRouter():
-    _marathon_url, _etcd_url, _vulcand_url = getEndpoints()
-    _etcd = etcd.Client(host=_etcd_url,port=4001,debug=logger)
-    hosts = getHosts(_vulcand_url)
-    for host in hosts:	
-        initRouter(_vulcand_url, host['Name'])
+
+def refreashRouter(host=None):
+    
+    _marathon_url = config.Config.get("marathon.url")
+    _etcd_host = config.Config.get("etcd.host")
+    _etcd_port = string.atoi(config.Config.get("etcd.port"))
+    _vulcand_url = config.Config.get("vulcand.url")
+    _etcd = etcd.Client(host=_etcd_host,port=_etcd_port,debug=logger)
+
+    _hosts = getHosts(_vulcand_url)
+    for _host in _hosts:
+
+        if host and host != _host['Name']:
+            continue	
+        initRouter(_vulcand_url, _host['Name'])
         apps = []
         try:
-            _tmp = _etcd.node.get("/vulcand/hosts/%s/apps" %(host['Name'])).node.children
+            _tmp = _etcd.node.get("/vulcand/hosts/%s/apps" %(_host['Name'])).node.children
             while True:
                 _n = _tmp.next()
                 apps.append(_n.key[_n.key.rindex("/")+1:])
@@ -153,13 +137,11 @@ def refreashRouter():
             _t = json.loads(_resp)['tasks']
             for task in _t:
                 tasks.append(task)
-		
         endpoints = []
-        for _loc in host["Locations"]:
+        for _loc in _host["Locations"]:
             if _loc['Id'] == 'default':
                 endpoints = _loc["Upstream"]["Endpoints"]
                 break;
-		
         for _end in endpoints:
             find = False
             for _task in tasks:
@@ -167,7 +149,7 @@ def refreashRouter():
                     find = True
                     break
             if find == False:
-                deleteEndpoint(_vulcand_url, host['Name'], _end["Id"])
+                deleteEndpoint(_vulcand_url, _host['Name'], _end["Id"])
         for _task in tasks:
             find = False
             for _end in endpoints:
@@ -175,14 +157,97 @@ def refreashRouter():
                     find = True
                     break
             if find == False:
-                addEndpoint(_vulcand_url, host['Name'], _task["id"], "http://%s:%s" % (_task['host'], _task['ports'][0]))
-		
-def run():
-	while True:
-		refreashRouter()
-		time.sleep(5)
+                addEndpoint(_vulcand_url, _host['Name'], _task["id"], "http://%s:%s" % (_task['host'], _task['ports'][0]))
+
+def getHostsByApps(apps):
+    hosts = {}
+    _etcd_host = config.Config.get("etcd.host")
+    _etcd_port = string.atoi(config.Config.get("etcd.port"))
+    _etcd = etcd.Client(host="etcd.bluemix.cdl.ibm.com",port=_etcd_port)
+    _hosts = _etcd.node.get("/vulcand/hosts").node.children
+    while True:
+        _host = None
+        try:
+            _host = _hosts.next()
+        except Exception,e:
+            pass
+        if _host == None:
+            break
+        _hostname = _host.key[_host.key.rindex("/")+1:]
+        apps = None 
+        try:
+            _apps = _etcd.node.get("%s/apps" %(_host.key)).node.children
+        except Exception, e:
+            pass
+        if _apps == None:
+            break
+        while True:
+            _app = None
+            try:
+                _app = apps.next()
+            except Exception,e :
+                pass
+            if _app == None:
+                break;
+            _appname = _app.key[_app.key.rindex("/")+1:]
+            for app in apps:
+                if app == _appname:
+                    hosts[_hostname] = _hostname
+    return hosts
+
+queue = Queue.Queue(0)
+
+class Worker(threading.Thread):
+    _stop = False
+    def stop(self):
+        self._stop = True
+    def run(self):
+        while(self._stop is not True):
+            _host = None
+            try:
+                _host = queue.get(timeout=2)
+            except Exception, e:
+                pass
+            if _host == None:
+                continue
+            logger.info("handler host %s" %(_host))
+            if _host == "*":
+                refreashRouter()
+            else:
+                refreashRouter(_host)
+
+worker = Worker()
+
+class Router:
     
+    @staticmethod
+    def push(apps):
+        hosts = getHostsByApps(apps)
+        for _k, _v  in hosts:
+            queue.put(_v)
+
+    @staticmethod
+    def pushHosts(hosts):
+        for host in hosts:
+            queue.put(host)
+
+    @staticmethod
+    def run():
+        worker.start()
+
+    @staticmethod
+    def stop():
+        worker.stop()
 
 if __name__ == '__main__':
-   run()
-   # _installCloudOE()
+    Router.run()
+    while True:
+        try:
+            Router.pushHosts(["*"])
+            Router.push(["helloxs"])
+            time.sleep(5)
+        except KeyboardInterrupt, ki:
+            Router.stop()
+            time.sleep(10)
+            break
+    print "Stop to refresh the router table."
