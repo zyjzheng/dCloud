@@ -69,7 +69,7 @@ def createUpstream(url, upstream):
     _status, _msg, _resp = callRestApi("POST", url, "/v1/upstreams", _body)
     logger.info("add upstream %s ,  status: %d, msg: %s, _resp: %s", upstream, _status, _msg, _resp)
 
-def createLocation(url, host, name="default", path="/"):
+def createLocation(url, host, name="default", path=".*"):
     _body='''{
         "Id": "%s",
         "Hostname": "%s",
@@ -84,7 +84,7 @@ def createLocation(url, host, name="default", path="/"):
 
 def initRouter(url, host):
     createUpstream(url, host)
-    createLocation(url, host, "default", "/")
+    createLocation(url, host, "default", ".*")
 
 def deleteEndpoint(url, upstream, endpoint):
     _status,_msg,_resp = callRestApi("DELETE", url, "/v1/upstreams/%s/endpoints/%s" %(upstream, endpoint))
