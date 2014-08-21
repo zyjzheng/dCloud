@@ -1,67 +1,11 @@
 #!/usr/bin/python
-import httplib 
-import json 
-import os 
-import time
-import etcd
-import traceback
-import Queue
-import threading
-import config
-import string
-from log import logger
+import json, os, time, etcd, traceback, Queue, threading, string
+from dcloud.utils.config import Config
+from dcloud.utils.log import logger
+from dcloud.utils.restful import Restful
 
-def sendHttpGetRequest(url, path, parameter, headers):
-    _conn = httplib.HTTPConnection(url)
-    _path=path
-    if parameter :
-        _path = _path + "?"
-        for k in parameter.keys():
-            _path = path + "&%s=%s" % (k, parameter[k])
-    _conn.request("GET", _path, None, headers)
-    _response = _conn.getresponse()
-    if _response.status !=200:
-        return _response.status, _response.reason,None
-    _data = _response.read()
-    return _response.status,_response.reason,_data
-
-def sendHttpPostRequest(url, path, body, headers):
-    _conn = httplib.HTTPConnection(url)
-    _conn.request("POST", path, body, headers)
-    _response = _conn.getresponse()
-    if _response.status !=200:
-        return _response.status, _response.reason,None
-    _data = _response.read()
-    return _response.status,_response.reason,_data
-
-def sendHttpPutRequest(url, path, body, headers):
-    _conn = httplib.HTTPConnection(url)
-    _conn.request("PUT", path, body, headers)
-    _response = _conn.getresponse()
-    if _response.status !=200:
-        return _response.status, _response.reason,None
-    _data = _response.read()
-    return _response.status,_response.reason,_data
-
-def sendHttpDeleteRequest(url, path, body, headers):
-    _conn = httplib.HTTPConnection(url)
-    _conn.request("DELETE", path, body, headers)
-    _response = _conn.getresponse()
-    if _response.status !=200:
-        return _response.status, _response.reason,None
-    _data = _response.read()
-    return _response.status,_response.reason,_data
-
-def callRestApi(method, url, path, content=None, headers={"Content-Type":"application/json"}):
-    if method == "GET":
-        return sendHttpGetRequest(url,path,content, headers)
-    if method == "POST":
-        return sendHttpPostRequest(url,path,content, headers)
-    if method == "PUT":
-        return sendHttpPutRequest(url,path,content, headers)
-    if method == "DELETE":
-        return sendHttpDeleteRequest(url,path,content, headers)
-    raise Exception("No Support Operator!!!")
+def callRestApi(_m, _u, _p, _b=None):
+    return Restful.callRestApi(_m, _u, _p, _b)
 
 def createUpstream(url, upstream):
     _body='''{
@@ -107,16 +51,16 @@ def getHosts(url):
 
 def refreashRouter(host=None):
     
-    _marathon_url = config.Config.get("marathon.url")
-    _etcd_host = config.Config.get("etcd.host")
-    _etcd_port = string.atoi(config.Config.get("etcd.port"))
-    _vulcand_url = config.Config.get("vulcand.url")
-    _etcd = etcd.Client(host=_etcd_host,port=_etcd_port,debug=logger)
+    _marathon_url = Config.get("marathon.url")
+    _etcd_host = Config.get("etcd.host")
+    _etcd_port = string.atoi(Config.get("etcd.port"))
+    _vulcand_url = Config.get("vulcand.url")
+    _etcd = etcd.Client(host=_etcd_host,port=_etcd_port)
 
     _hosts = getHosts(_vulcand_url)
     for _host in _hosts:
 
-        if host and host != _host['Name']:
+        if host and host != _host['Name'] and host != "*":
             continue	
         initRouter(_vulcand_url, _host['Name'])
         apps = []
@@ -134,6 +78,8 @@ def refreashRouter(host=None):
         tasks = []
         for app in apps:
             _status,_msg,_resp= callRestApi("GET", _marathon_url, "/v2/apps/%s/tasks" % (app))
+            if _status != 200:
+		continue
             _t = json.loads(_resp)['tasks']
             for task in _t:
                 tasks.append(task)
@@ -161,8 +107,8 @@ def refreashRouter(host=None):
 
 def getHostsByApps(apps):
     hosts = {}
-    _etcd_host = config.Config.get("etcd.host")
-    _etcd_port = string.atoi(config.Config.get("etcd.port"))
+    _etcd_host = Config.get("etcd.host")
+    _etcd_port = string.atoi(Config.get("etcd.port"))
     _etcd = etcd.Client(host="etcd.bluemix.cdl.ibm.com",port=_etcd_port)
     _hosts = _etcd.node.get("/vulcand/hosts").node.children
     while True:
@@ -206,11 +152,12 @@ class Worker(threading.Thread):
             _host = None
             try:
                 _host = queue.get(timeout=2)
+                logger.info("handler host %s" %(_host))
             except Exception, e:
+                traceback.print_exc()
                 pass
             if _host == None:
                 continue
-            logger.info("handler host %s" %(_host))
             if _host == "*":
                 refreashRouter()
             else:
@@ -218,7 +165,7 @@ class Worker(threading.Thread):
 
 worker = Worker()
 
-class Router:
+class Emitter:
     
     @staticmethod
     def push(apps):
@@ -230,6 +177,7 @@ class Router:
     def pushHosts(hosts):
         for host in hosts:
             queue.put(host)
+        logger.info('push host')
 
     @staticmethod
     def run():
@@ -238,16 +186,3 @@ class Router:
     @staticmethod
     def stop():
         worker.stop()
-
-if __name__ == '__main__':
-    Router.run()
-    while True:
-        try:
-            Router.pushHosts(["*"])
-            Router.push(["helloxs"])
-            time.sleep(5)
-        except KeyboardInterrupt, ki:
-            Router.stop()
-            time.sleep(10)
-            break
-    print "Stop to refresh the router table."

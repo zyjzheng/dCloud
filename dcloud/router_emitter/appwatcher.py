@@ -4,8 +4,8 @@
 import logging
 from os.path import basename, join
 
-from zkclient import ZKClient, zookeeper, watchmethod
-from router import Router
+from dcloud.utils.zkclient import ZKClient, zookeeper, watchmethod
+from dcloud.router_emitter.emitter import Emitter
 
 logging.basicConfig(
     level = logging.DEBUG,
@@ -75,7 +75,7 @@ class AppWatcher(object):
                     pass
             self.logger.info(result)
             #push node array to yuanjie
-            Router.push(result)
+            Emitter.push(result)
         children = self.zk.get_children(self.root_path, watcher)
         for i in children:
             if i.startswith("tasks:"):
