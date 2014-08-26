@@ -1,0 +1,17 @@
+{
+	"marathon":{
+		"host":"9.115.210.55",
+		"port":8080
+	},
+	"router":{
+		"vulcand":{
+			"host":"9.115.210.51",
+			"port":8182
+		},
+		"domain":"de.bluemix.cdl.ibm.com"
+	},
+	"log":{
+		"log_file":"/root/dcloud.log",
+		"log_level":"DEBUG"
+	}
+}

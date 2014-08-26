@@ -1,0 +1,1 @@
+../../../../../share/pyshared/paste/script/copydir.py

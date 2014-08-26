@@ -1,0 +1,1 @@
+../../../../../share/pyshared/paste/util/doctest24.py

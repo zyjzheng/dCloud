@@ -1,0 +1,1 @@
+../../../../../share/pyshared/paste/script/help.py

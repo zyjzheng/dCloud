@@ -1,0 +1,1 @@
+../../../../../share/pyshared/paste/cowbell/__init__.py

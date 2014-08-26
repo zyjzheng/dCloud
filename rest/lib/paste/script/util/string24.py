@@ -1,0 +1,1 @@
+../../../../../../share/pyshared/paste/script/util/string24.py

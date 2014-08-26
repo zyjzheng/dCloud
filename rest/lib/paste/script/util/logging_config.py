@@ -1,0 +1,1 @@
+../../../../../../share/pyshared/paste/script/util/logging_config.py

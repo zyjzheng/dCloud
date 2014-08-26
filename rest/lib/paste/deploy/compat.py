@@ -1,0 +1,1 @@
+../../../../../share/pyshared/paste/deploy/compat.py

@@ -1,0 +1,1 @@
+../../../../../share/pyshared/paste/exceptions/formatter.py

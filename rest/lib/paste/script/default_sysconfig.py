@@ -1,0 +1,1 @@
+../../../../../share/pyshared/paste/script/default_sysconfig.py
