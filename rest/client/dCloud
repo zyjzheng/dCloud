@@ -1,0 +1,47 @@
+#! /bin/bash 
+
+if [ "$#" -lt "1" ]; then 
+  echo "use: $0 help"
+  exit 1 
+fi
+base_dir="$(cd "$(dirname "$0")";pwd)"
+command="$1";shift
+source "$base_dir/utils"
+case "$command" in
+  "help")
+    usage
+    ;;
+  "target")
+    target $*
+    ;;
+  "push")
+    push $*
+    ;;
+  "scale")
+    scale $*
+    ;;
+  "create_host")
+    create_host $*
+    ;;
+  "map")
+    map $*
+    ;;
+  "unmap")
+    unmap $*
+    ;;
+  "delete_app")
+    delete_app $*
+    ;;
+  "delete_host")
+    delete_host $*
+    ;;
+  "apps")
+    get_app_list
+    ;;
+  "hosts")
+    get_host_list 
+    ;;
+  *)
+    usage
+    ;;
+esac

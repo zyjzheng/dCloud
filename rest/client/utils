@@ -1,0 +1,341 @@
+#! /bin/bash
+
+base_dir="$(cd "$(dirname "$0")";pwd)"
+function error(){
+  echo -e "\033[31m$1\033[0m"
+}
+
+function warning(){
+  echo -e "\033[33m$1\033[0m"
+}
+
+function info(){
+  echo "$1"
+}
+
+function succeed(){
+  echo -e "\033[42;37m$1\033[0m"
+}
+
+function usage(){
+  echo "$0 COMMAND ARGV"  
+  echo "COMMAND and ARGV like below:"
+  echo "help                                  command help"
+  echo "target dCloud_url                     target to dCloud"
+  echo "push app_name -p manifest_path        push one app to dCloud"
+  echo "scale app_name -p manifest_path       scale app by manifest changes"
+  echo "create_host host                      create one host and use default domain"
+  echo "map app_name host                     map app to one host and publish it"
+  echo "unmap app_name host                   unmap app from one host"
+  echo "delete_app app_name                   delete app"
+  echo "delete_host host                      delete host"
+  echo "apps                                  show all the apps"
+  echo "hosts                                 show all existed hosts"
+}
+
+function target(){
+  if [ "$#" -lt "1" ]; then
+    usage
+    exit 1
+  fi
+  target_url="$1"
+  output=`curl --stderr /dev/null -s -X GET -H "Content-Type: application/json" -w info_http_code:%{http_code} ${target_url}/info`
+  status_code=`echo $output | sed "s/.*info_http_code:\([0-9]\+\)/\1/"`
+  content=`echo $output | sed "s/\(.*\)info_http_code:\([0-9]\+\)$/\1/"`
+  if [ "$status_code" -eq "200" ]; then
+    echo "content"
+    cache_file="${base_dir}/.target"
+    echo "$target_url" > $cache_file
+    succeed "target successfully"
+  else
+    error "cannot target to $target_url/info"
+    exit 1
+  fi
+}
+
+function get_target(){
+  cache_file="${base_dir}/.target"
+  target=""
+  if [ -f "$cache_file" ]; then
+    target=`cat "$cache_file"`
+  fi
+  if [ "$target" == "" ]; then
+    echo ""
+    exit 1
+  fi
+  echo $target
+  exit 0
+}
+
+function push(){
+  if [ "$#" -lt "3" ]; then
+    usage
+    exit 1
+  fi
+  app_name="$1";shift
+  while getopts :p: opts
+  do
+    case "$opts" in
+      "p")
+        manifest_path=$OPTARG
+        ;;
+      ?)
+        usage
+        exit 1
+        ;;
+    esac
+  done
+  target_url=`get_target`
+  if [ "$target_url" != "" ]; then
+    if [ -f "$manifest_path" ]; then
+      echo "manifest is: "
+      cat "$manifest_path"
+      output=`curl --stderr /dev/null -s -X POST -H "Content-Type: application/json" -w push_http_code:%{http_code} ${target_url}/apps -d@$manifest_path`
+      status_code=`echo $output | sed "s/.*push_http_code:\([0-9]\+\)/\1/"`
+      content=`echo $output | sed "s/\(.*\)push_http_code:\([0-9]\+\)$/\1/"`
+      if [ "$status_code" -eq "200" ]; then
+        echo "$content"
+        succeed "succeed to push app $app_name"
+      else
+        echo "$content"
+        error "failed to push app $app_name"
+        exit 1
+      fi
+    else
+      error "manifest doesn't exist!!!"
+      exit 1
+    fi
+  else
+    error "please target dCloud first"
+    exit 1
+  fi
+}
+
+function scale(){
+  if [ "$#" -lt "3" ]; then
+    usage
+    exit 1
+  fi
+  app_name="$1";shift
+  while getopts :p: opts
+  do
+    case "$opts" in
+      "p")
+        manifest_path=$OPTARG
+        ;;
+      ?)
+        usage
+        exit 1
+        ;;
+    esac
+  done
+  target_url=`get_target`
+  if [ "$target_url" != "" ]; then
+    if [ -f "$manifest_path" ]; then
+      echo "manifest is: "
+      cat "$manifest_path"
+      output=`curl --stderr /dev/null -s -X PUT -H "Content-Type: application/json" -w scale_http_code:%{http_code} ${target_url}/apps/$app_name -d@$manifest_path`
+      status_code=`echo $output | sed "s/.*scale_http_code:\([0-9]\+\)/\1/"`
+      content=`echo $output | sed "s/\(.*\)scale_http_code:\([0-9]\+\)$/\1/"`
+      if [ "$status_code" -eq "200" ]; then
+        echo "$content"
+        succeed "succeed to scale app $app_name"
+      else
+        echo "$content"
+        error "failed to scale app $app_name"
+        exit 1
+      fi
+    else
+      error "manifest doesn't exist!!!"
+      exit 1
+    fi
+  else
+    error "please target dCloud first"
+    exit 1
+  fi
+}
+
+function create_host(){
+  if [ "$#" -lt "1" ]; then
+    usage
+    exit 1
+  fi 
+  target_url=`get_target`
+  if [ "$target_url" != "" ]; then
+    host="$1"
+    body="{\"host\":\"$host\"}"
+    output=`curl --stderr /dev/null -s -X POST -H "Content-Type: application/json" -w create_host_http_code:%{http_code} ${target_url}/router/hosts -d $body`
+    status_code=`echo $output | sed "s/.*create_host_http_code:\([0-9]\+\)/\1/"`
+    content=`echo $output | sed "s/\(.*\)create_host_http_code:\([0-9]\+\)$/\1/"`
+    if [ "$status_code" -eq "200" ]; then
+      echo "$content"
+      succeed "succeed to create host $host"
+    else
+      echo "$content"
+      error "failed to create host $host"
+      exit 1
+    fi
+  else
+    error "please target dCloud first"
+    exit 1
+  fi
+}
+
+function map(){
+  if [ "$#" -lt "2" ]; then 
+    usage
+    exit 1
+  fi
+  target_url=`get_target`
+  if [ "$target_url" != "" ]; then
+    app_name="$1"
+    host="$2"
+    output=`curl --stderr /dev/null -s -X POST -H "Content-Type: application/json" -w map_http_code:%{http_code} ${target_url}/apps/$app_name/routers/$host`
+    status_code=`echo $output | sed "s/.*map_http_code:\([0-9]\+\)/\1/"`
+    content=`echo $output | sed "s/\(.*\)map_http_code:\([0-9]\+\)$/\1/"`
+    if [ "$status_code" -eq "200" ]; then
+      echo "$content" 
+      succeed "succeed to map app $app_name to host $host"
+    else
+      echo "$content"
+      error "failed to map app $app_name to host $host"
+      exit 1
+    fi
+  else
+    error "please target dCloud first"
+    exit 1
+  fi
+}
+
+function unmap(){
+  if [ "$#" -lt "2" ]; then
+    usage
+    exit 1
+  fi
+  target_url=`get_target`
+  if [ "$target_url" != "" ]; then
+    app_name="$1"
+    host="$2"
+    output=`curl --stderr /dev/null -s -X DELETE -H "Content-Type: application/json" -w unmap_http_code:%{http_code} ${target_url}/apps/$app_name/routers/$host`
+    status_code=`echo $output | sed "s/.*unmap_http_code:\([0-9]\+\)/\1/"`
+    content=`echo $output | sed "s/\(.*\)unmap_http_code:\([0-9]\+\)$/\1/"`
+    if [ "$status_code" -eq "200" ]; then
+      echo "$content" 
+      succeed "succeed to unmap app $app_name to host $host"
+    else
+      echo "$content"
+      error "failed to unmap app $app_name to host $host"
+      exit 1
+    fi
+  else
+    error "please target dCloud first"
+    exit 1
+  fi
+}
+
+function delete_app(){
+  if [ "$#" -lt "1" ]; then
+    usage
+    exit 1
+  fi
+  target_url=`get_target`
+  if [ "$target_url" != "" ]; then
+    app_name="$1"
+    output=`curl --stderr /dev/null -s -X DELETE -H "Content-Type: application/json" -w delete_app_http_code:%{http_code} ${target_url}/apps/$app_name`
+    status_code=`echo $output | sed "s/.*delete_app_http_code:\([0-9]\+\)/\1/"`
+    content=`echo $output | sed "s/\(.*\)delete_app_http_code:\([0-9]\+\)$/\1/"`
+    if [ "$status_code" -eq "200" ]; then
+      echo "$content" 
+      succeed "succeed to delete app $app_name"
+    else
+      echo "$content"
+      error "failed to delete app $app_name"
+      exit 1
+    fi
+  else
+    error "please target dCloud first"
+    exit 1
+  fi
+}
+
+function delete_host(){
+  if [ "$#" -lt "1" ]; then
+    usage
+    exit 1
+  fi
+  target_url=`get_target`
+  if [ "$target_url" != "" ]; then
+    host="$1"
+    output=`curl --stderr /dev/null -s -X DELETE -H "Content-Type: application/json" -w delete_host_http_code:%{http_code} ${target_url}/router/hosts/$host`
+    status_code=`echo $output | sed "s/.*delete_host_http_code:\([0-9]\+\)/\1/"`
+    content=`echo $output | sed "s/\(.*\)delete_host_http_code:\([0-9]\+\)$/\1/"`
+    if [ "$status_code" -eq "200" ]; then
+      echo "$content" 
+      succeed "succeed to delete host $host"
+    else
+      echo "$content"
+      error "failed to delete host $host"
+      exit 1
+    fi
+  else
+    error "please target dCloud first"
+    exit 1
+  fi
+}
+
+function get_app_list(){
+  target_url=`get_target`
+  if [ "$target_url" != "" ]; then
+    output=`curl --stderr /dev/null -s -X GET -H "Content-Type: application/json" -w get_app_list_http_code:%{http_code} ${target_url}/apps`
+    status_code=`echo $output | sed "s/.*get_app_list_http_code:\([0-9]\+\)/\1/"`
+    content=`echo $output | sed "s/\(.*\)get_app_list_http_code:\([0-9]\+\)$/\1/"`
+    if [ "$status_code" -eq "200" ]; then
+      length=$(echo "$content" | ruby -rjson -e "puts JSON[STDIN.read]['content'].length;")
+      echo "------------------------"
+      printf '|%10s | %9s|\n' "app_name" "instances"
+      for i in $(seq $length)
+      do
+        app_name="$(echo "$content" | ruby -rjson -e "puts JSON[STDIN.read]['content'][$i - 1]['id'];")"
+        app_instance="$(echo "$content" | ruby -rjson -e "puts JSON[STDIN.read]['content'][$i - 1]['instances'];")"
+        echo "------------------------"
+        printf '|%10s | %9s|\n' "$app_name" "$app_instance"
+      done
+      echo "------------------------"
+    else
+      echo "$content"
+      error "failed to get app list"
+      exit 1
+    fi
+  else
+    error "please target dCloud first"
+    exit 1
+  fi
+}
+
+function get_host_list(){
+  target_url=`get_target`
+  if [ "$target_url" != "" ]; then
+    output=`curl --stderr /dev/null -s -X GET -H "Content-Type: application/json" -w get_host_list_http_code:%{http_code} ${target_url}/router/hosts`
+    status_code=`echo $output | sed "s/.*get_host_list_http_code:\([0-9]\+\)/\1/"`
+    content=`echo $output | sed "s/\(.*\)get_host_list_http_code:\([0-9]\+\)$/\1/"`
+    if [ "$status_code" -eq "200" ]; then
+      length=$(echo "$content" | ruby -rjson -e "puts JSON[STDIN.read]['content'].length;")
+      echo "------------------------------------------------"
+      echo "router"
+      echo "------------------------------------------------"
+      for i in $(seq $length)
+      do
+        host="$(echo "$content" | ruby -rjson -e "puts JSON[STDIN.read]['content'][$i - 1];")"
+        echo "$host"
+      done
+      echo "------------------------------------------------"
+    else
+      echo "$content"
+      error "failed to get router list"
+      exit 1
+    fi
+  else
+    error "please target dCloud first"
+    exit 1
+  fi
+}

@@ -1,0 +1,10 @@
+{
+  "container": {
+    "image": "docker:///9.181.27.216/helloworld:latest"
+  },
+  "constraints": [
+     ["hostname","UNIQUE",""]
+  ],
+  "id": "testnew",
+  "instances": "1"
+}
