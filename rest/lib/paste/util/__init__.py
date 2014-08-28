@@ -1,1 +1,4 @@
-../../../../../share/pyshared/paste/util/__init__.py
+"""
+Package for miscellaneous routines that do not depend on other parts
+of Paste
+"""

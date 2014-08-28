@@ -1,1 +1,1 @@
-../../../../../../share/pyshared/paste/evalexception/media/MochiKit.packed.js
+../../../../javascript/mochikit/MochiKit.js
