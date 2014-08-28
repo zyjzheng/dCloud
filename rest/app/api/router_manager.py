@@ -1,7 +1,7 @@
 from lib.bottle import request, route, response
-from utils.logger import DCLogger
-from utils.config import Config
-from controller.router import RouterController
+from app.utils.logger import DCLogger
+from app.utils.config import Config
+from app.controller.router import RouterController
 import json
 
 config = Config.getConfig()
