@@ -5,11 +5,13 @@ class DCLogger:
 
 	def __init__(self, path = None, level = None):
 		self.logger = logging.getLogger()
-		if path == None:
-			if os.path.exists(path):
+		if path != None:
+			log_dir = os.path.split(path)[0]
+			if os.path.exists(log_dir):
 				self.handler = logging.FileHandler(path)
-				formatter = logging.Formatter('%(name)-12s: %(levelname)-8s %(message)s')
+				formatter = logging.Formatter('%(name)-12s %(asctime)s  %(filename)s[line:%(lineno)d] %(levelname)-8s %(message)s', '%a, %d %b %Y %H:%M:%S')
 				self.handler.setFormatter(formatter)
+				self.logger.addHandler(self.handler)
 		if level == 'INFO':
 			self.logger.setLevel(logging.INFO)
 		elif level == 'WARNING':
@@ -17,7 +19,7 @@ class DCLogger:
 		elif level == 'DEBUG':
 			self.logger.setLevel(logging.DEBUG)
 		else:
-			self.logging.setLevel(logging.INFO)
+			self.logger.setLevel(logging.INFO)
 
 	@staticmethod
 	def set_default_logger(dclogger):

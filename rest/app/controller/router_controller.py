@@ -12,19 +12,21 @@ class RouterController:
 		try:
 			vulcand_host = self.config['router']['vulcand']['host']
 			vulcand_port = self.config['router']['vulcand']['port']
+			self.vulcand_app_version = self.config['router']['vulcand']['api_version']
 			self.vulcand_client = HttpClient(vulcand_host, vulcand_port, self.logger)
 		except Exception, e:
 			trace = traceback.format_exc()
 			print(trace)
-			self.logger.error(trace)
+			if self.logger is not None:
+				self.logger.error(trace)
 			return 
 
 	def get_hosts(self):
 		try:
-			result = self.vulcand_client.get_request('/v1/hosts', header)
+			result = self.vulcand_client.get_request('/%s/hosts'%(self.vulcand_app_version), header)
 			if result == None:
 				self.__reinit_client()
-				result = self.vulcand_client.get_request('/v1/hosts', header)
+				result = self.vulcand_client.get_request('/%s/hosts'%(self.vulcand_app_version), header)
 			status, content = SysUtils.getResult(result)
 			status_bool = False
 			if str(status).startswith('2'):
@@ -45,10 +47,10 @@ class RouterController:
 		try:
 			host_domain = str(host) + '.' + self.config['router']['domain']
 			body = '{"name":"%s"}' % (host_domain)
-			result = self.vulcand_client.post_request('/v1/hosts', body, header)
+			result = self.vulcand_client.post_request('/%s/hosts'%(self.vulcand_app_version), body, header)
 			if result == None:
 				self.__reinit_client()
-				result = self.vulcand_client.post_request('/v1/hosts', body, header)
+				result = self.vulcand_client.post_request('/%s/hosts'%(self.vulcand_app_version), body, header)
 			status, content = SysUtils.getResult(result)
 			status_bool = False
 			if str(status).startswith('2'):
@@ -64,7 +66,7 @@ class RouterController:
 	def delete_host(self, host):
 		try:
 			host_domain = str(host) + '.' + self.config['router']['domain']
-			url = '/v1/hosts/' + host_domain
+			url = '/%s/hosts/'%(self.vulcand_app_version) + host_domain
 			result = self.vulcand_client.del_request(url, header)
 			if result == None:
 				self.__reinit_client()
@@ -85,7 +87,7 @@ class RouterController:
 		try:
 			domain = self.config['router']['domain']
 			host = host_name + "." + domain
-			url = '/v1/hosts/' + host + "/locations"
+			url = '/%s/hosts/'%(self.vulcand_app_version) + host + "/locations"
 			result = self.vulcand_client.get_request(url, header)
 			if result == None:
 				self.__reinit_client()

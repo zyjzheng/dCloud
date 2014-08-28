@@ -1,5 +1,6 @@
 import json
 import os, inspect
+import traceback
 
 cur_dir = os.path.abspath(os.path.split(inspect.getfile(inspect.currentframe()))[0])
 
@@ -10,11 +11,15 @@ class Config:
 		if Config.config == None:
 			if path == None or not os.path.exists(path):
 				default_path = cur_dir + "/../../config/dCloud.json"
-				config_file = file(default_path)
-				Config.config = json.load(config_file)
+				if os.path.exists(default_path):
+					config_file = file(default_path)
+					Config.config = json.load(config_file)
 			else:
 				config_file = file(path)
-				Config.config = json.load(config_file)
+				try:
+					Config.config = json.load(config_file)
+				except Exception, e:
+					traceback.print_exc()
 		return Config.config
 			
 

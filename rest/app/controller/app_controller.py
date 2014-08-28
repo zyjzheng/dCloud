@@ -12,19 +12,21 @@ class AppController:
 		try:
 			marathon_host = self.config['marathon']['host']
 			marathon_port = self.config['marathon']['port']
+			self.marathon_api_version = self.config['marathon']['api_version']
 			self.marathon_client = HttpClient(marathon_host, marathon_port)
 		except Exception, e:
 			trace = traceback.format_exc()
 			print(trace)
-			self.logger.error(trace)
+			if self.logger is not None:
+				self.logger.error(trace)
 			return 
 
 	def get_apps(self):
 		try:
-			result = self.marathon_client.get_request('/v2/apps',header)
+			result = self.marathon_client.get_request('/%s/apps'%(self.marathon_api_version),header)
 			if result == None:
 				self.__reinit_client()
-				result = self.marathon_client.get_request('/v2/apps',header)
+				result = self.marathon_client.get_request('/%s/apps'%(self.marathon_api_version),header)
 			status, content = SysUtils.getResult(result)
 			status_bool = False
 			if str(status).startswith('2'):
@@ -56,10 +58,10 @@ class AppController:
 	def get_app(self, name):
 		try:
 			print(name)
-			result = self.marathon_client.get_request('/v2/apps/' + name, header)
+			result = self.marathon_client.get_request('/%s/apps/'%(self.marathon_api_version) + name, header)
 			if result == None:
 				self.__reinit_client()
-				result = self.marathon_client.get_request('/v2/apps/' + name, header)
+				result = self.marathon_client.get_request('/%s/apps/'%(self.marathon_api_version) + name, header)
 			status, content = SysUtils.getResult(result)
 			rtn_content = {}
 			if str(status).startswith('2'):
@@ -86,10 +88,10 @@ class AppController:
 
 	def is_app_exist(self, name):
 		try:
-			result = self.marathon_client.get_request('/v2/apps/' + name,  header)
+			result = self.marathon_client.get_request('/%s/apps/'%(self.marathon_api_version) + name,  header)
 			if result == None:
 				self.__reinit_client()
-				result = self.marathon_client.get_request('/v2/apps/' + name,  header)
+				result = self.marathon_client.get_request('/%s/apps/'%(self.marathon_api_version) + name,  header)
 			status, content = SysUtils.getResult(result)
 			if str(status).startswith('2'):
 				return True
@@ -104,10 +106,10 @@ class AppController:
 	def create_app(self, body):
 		try:
 			body = json.dumps(body)
-			result = self.marathon_client.post_request('/v2/apps',body,header)
+			result = self.marathon_client.post_request('/%s/apps'%(self.marathon_api_version),body,header)
 			if result == None:
 				self.__reinit_client()
-				result = self.marathon_client.post_request('/v2/apps',body,header)
+				result = self.marathon_client.post_request('/%s/apps'%(self.marathon_api_version),body,header)
 			status, content = SysUtils.getResult(result)
 			status_bool = False
 			if str(status).startswith('2'):
@@ -123,10 +125,10 @@ class AppController:
 	def update_app(self, name, body):
 		try:
 			body = json.dumps(body)
-			result = self.marathon_client.put_request('/v2/apps/' + name, body, header)
+			result = self.marathon_client.put_request('/%s/apps/'%(self.marathon_api_version) + name, body, header)
 			if result == None:
 				self.__reinit_client()
-				result = self.marathon_client.put_request('/v2/apps/' + name, body, header)
+				result = self.marathon_client.put_request('/%s/apps/'%(self.marathon_api_version) + name, body, header)
 			status, content = SysUtils.getResult(result)
 			status_bool = False
 			if str(status).startswith('2'):
@@ -140,10 +142,10 @@ class AppController:
 
 	def delete_app(self, name):
 		try:
-			result = self.marathon_client.del_request('/v2/apps/' + name, header)
+			result = self.marathon_client.del_request('/%s/apps/'%(self.marathon_api_version) + name, header)
 			if result == None:
 				self.__reinit_client()
-				result = self.marathon_client.del_request('/v2/apps/' + name, header)
+				result = self.marathon_client.del_request('/%s/apps/'%(self.marathon_api_version) + name, header)
 			status, content = SysUtils.getResult(result)
 			status_bool = False
 			if str(status).startswith('2'):

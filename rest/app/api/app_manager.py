@@ -5,16 +5,15 @@ from app.controller.app_controller import AppController
 from app.controller.router_controller import RouterController
 import json
 
+
 config = Config.getConfig()
 logger = DCLogger.get_default_logger()
 
-if logger == None:
-	log_file = config['log']['log_file']
-	log_level = config['log']['log_level']
-	logger = DCLogger(log_file, log_level)
-	DCLogger.set_default_logger(logger)
 app_controller = AppController(config, logger)
 router_controller = RouterController(config,logger)
+
+assert app_controller != None
+assert router_controller != None
 
 @route('/apps', method = ['GET'])
 def get_all_apps():

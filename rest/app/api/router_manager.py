@@ -7,12 +7,8 @@ import json
 config = Config.getConfig()
 logger = DCLogger.get_default_logger()
 
-if logger == None:
-	log_file = config['log']['log_file']
-	log_level = config['log']['log_level']
-	logger = DCLogger(log_file, log_level)
-	DCLogger.set_default_logger(logger)
 router_controller = RouterController(config,logger)
+assert router_controller != None
 
 @route('/router/hosts', method = ['GET'])
 def get_hosts():
