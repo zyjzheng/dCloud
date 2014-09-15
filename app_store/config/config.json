@@ -1,0 +1,11 @@
+{
+	"marathon_api":"http://9.115.210.55:8080",
+	"marathon_api_version":"v2",
+	"slave_port":5051,
+	"influxdb_host":"9.115.210.71",
+	"influxdb_port":8086,
+	"influxdb_user":"test",
+	"influxdb_password":"test",
+	"database":"cadvisor",
+	"table_name":"apps"
+}
