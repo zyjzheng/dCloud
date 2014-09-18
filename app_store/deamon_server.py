@@ -3,6 +3,7 @@ import json
 import time
 import inspect
 import traceback
+from elasticsearch import Elasticsearch
 from httpclient import HttpClient
 from influxdb import InfluxDBClient
 from influxdb import InfluxDBClientError
@@ -23,6 +24,7 @@ class DeamonServer:
 				config_fd = open(config_path)
 				self.config = json.load(config_fd)
 			#self.init_database()
+			self.task_containers = {}
 		except Exception, e:
 			trace = traceback.format_exc()
 			print(trace)
@@ -44,13 +46,16 @@ class DeamonServer:
 		running_task = []
 		for task in tasks:
 			host = task["host"]
-			try:
-				done_task.index(host)
-			except Exception, e:
-				print(host)
-				running_task.extend(self.__get_mesos_slave_container(host))
-				done_task.append(host)
-		self.__store_app_container(running_task)
+			if host.strip(" ") != "":
+				try:
+					done_task.index(host)
+				except Exception, e:
+					print("----" + host)
+					running_task.extend(self.__get_mesos_slave_container(host))
+					done_task.append(host)
+		print("start to update grafana templates")                                
+		self.update_templates(running_task)
+		print("finish updating")
 
 
 	def get_marathon_tasks(self):
@@ -69,28 +74,76 @@ class DeamonServer:
 		else:
 			raise Exception("can not get marathon running task")
 
-	def __store_app_container(self, running_task):
-		client = self.__get_influxdb_client()
-		table_name = self.config["table_name"]
-		client.query("delete from %s" %(table_name))
-		items = [{
-		"points": [],
-		"name": table_name,
-		"columns": ["app_name", "container"]
-		}]
+	def update_templates(self, running_task):
+		need_change_apps = []
+		temp_containers = {}
 		for task in running_task:
 			task_id = task["id"]
-			container = "/docker/" + task["container"]
+			container = "/docker/mesos-" + task["container"]
 			app_name = task_id
 			split_index = task_id.rfind('.',0)
 			if split_index >= 0:
 				app_name = task_id[0:split_index]
-			point = []
-			point.append(app_name)
-			point.append(container)
-			items[0]["points"].append(point)
-		client.write_points(items)
+			try:
+				temp_containers.keys().index(app_name)
+				temp_containers[app_name].append(container)
+			except ValueError, e:
+				temp_containers[app_name] = []
+				temp_containers[app_name].append(container)
+		for app_name in temp_containers.keys():
+			try:
+				app_added = 0
+				self.task_containers.keys().index(app_name)
+				new_app_containers = temp_containers[app_name]
+				for container in new_app_containers:
+					try:
+						self.task_containers[app_name].index(container)
+					except ValueError, e:
+						need_change_apps.append(app_name)
+						app_added = 1
+						self.task_containers[app_name].append(container)
+				need_removed_container = []
+				for container in self.task_containers[app_name]:
+					try:
+						new_app_containers.index(container)
+					except ValueError, e:
+						if app_added == 0:
+							need_change_apps.append(app_name)
+						need_removed_container.append(container)
+				for container in need_removed_container:
+					self.task_containers[app_name].remove(container)
+			except ValueError, e:
+				need_change_apps.append(app_name)
+				self.task_containers[app_name] = temp_containers[app_name]
+			
+		self.__update_templates_es(need_change_apps)
 
+	def __update_templates_es(self, apps):
+		es_host = self.config["ES_host"]
+		es_port = self.config["ES_port"]
+		
+		es = Elasticsearch([{"host": es_host, "port": es_port}])	
+		for app in apps:
+			containers = self.task_containers[app]
+			where_str = " and ( 1 > 2 "
+			for container in containers:
+				where_str = where_str + " or container_name = '" + container + "' "
+			where_str = where_str + ")"
+			template = self.__change_template(app, where_str)
+			template_str = json.dumps(template)
+			template_body = {"user":"guest","group":"guest","title":"cpuandmem","tags":[],"dashboard":template_str}		
+			es.index(index="grafana-dash", doc_type="dashboard", id=app, body=template_body)
+				
+	def __change_template(self,app, where_str):
+		template_file = self.config["template"]	
+		template_fd = open(template_file)
+		template = json.load(template_fd)
+		template["title"] = app
+		for row in template["rows"]:
+			for panel in row["panels"]:
+				for target in panel["targets"]:
+					target["query"] = target["query"].replace("<CONTAINER_LIST>",where_str)
+		return template
 	def __get_running_task(self,framework):
 		running_tasks = []
 		executors = framework["executors"]
