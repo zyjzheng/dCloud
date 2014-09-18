@@ -157,21 +157,25 @@ class DeamonServer:
 	def __get_mesos_slave_container(self, host):
 		port = self.config["slave_port"]
 		state_url = "/state.json"
-		client = HttpClient(host,port)
-		result = client.get_request(state_url,{})
-		if result is not None:
-			status = result[0]
-			content = result[1]
-			if status == 200:
-				slave_status = json.loads(content)
-				framework = slave_status["frameworks"][0]
-				running_task = self.__get_running_task(framework)
-				return running_task
+		try:
+			client = HttpClient(host,port)
+			result = client.get_request(state_url,{})
+			if result is not None:
+				status = result[0]
+				content = result[1]
+				if status == 200:
+					slave_status = json.loads(content)
+					framework = slave_status["frameworks"][0]
+					running_task = self.__get_running_task(framework)
+					return running_task
+				else:
+					raise Exception("http response error, code is %d" %(status))
 			else:
-				raise Exception("http response error, code is %d" %(status))
-		else:
-			raise Exception("can not get containers of %s" %(host))
-
+				raise Exception("can not get containers of %s" %(host))
+		except Exception, e:
+			trace = traceback.format_exc()
+			print(trace)
+			return []
 	def __get_influxdb_client(self):
 		influxdb_host = self.config["influxdb_host"]
 		influxdb_port = self.config["influxdb_port"]
@@ -187,7 +191,11 @@ if __name__ == "__main__":
 	try:
 		ds = DeamonServer()
 		while(True):
-			ds.start()
+			try:
+				ds.start()
+			except Exception, e:
+				trace = traceback.format_exc()
+				print(trace)
 			time.sleep(100)
 
 	except Exception, e:
