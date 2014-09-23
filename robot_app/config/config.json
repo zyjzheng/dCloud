@@ -1,0 +1,7 @@
+{
+	"log_file": "/root/robot_app.log",
+	"level": "DEBUG",
+	"db": "/root/robot_app.db",
+	"domain": "dcloud.bluemix.cdl.ibm.com",
+	"vulcan_port": 80	
+}
