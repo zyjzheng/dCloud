@@ -63,6 +63,21 @@ class Robot:
 		status = json.loads(content)["status"]
 		return status
 
+	def __check_app_status(self, app_name):
+		result = self.dClient.get_request("/apps/" + app_name, {"Content-Type": "application/json"})
+		if result is not None:
+			content = result[1]
+			app_info = json.loads(content)["content"]
+			instances = app_info["instances"]
+			running = app_info["running"]
+			self.logger.info("app " + app_name + ":" + str(running) + "/" + str(running) )
+			if instances == running:
+				return True
+			else:
+				return False
+		else:
+			return False
+
 	def check_target(self,run_uuid):
 		start_time = time.time()
 		result = self.dClient.get_request("/info")
@@ -87,18 +102,34 @@ class Robot:
 			app_body["id"] = app_name
 			start_time = time.time()
 			result = self.dClient.post_request("/apps",json.dumps(app_body),{"Content-Type":"application/json"})
-			end_time = time.time()
 			print(result)
 			if result is not None:
 				status = self.__get_action_status(result)
 				if status:
 					self.logger.info("succeed to push app" + app_name)
-					self.__store_status(run_uuid,start_time,end_time,"push",0)
+					app_running_status = self.__check_app_status(app_name)
+					count = 0
+					while not app_running_status:
+						time.sleep(5)
+						app_running_status = self.__check_app_status(app_name)
+						count+=1
+						if count > 4:
+							break
+					if app_running_status:
+						self.logger.info("all app instances are running")
+						end_time = time.time()
+						self.__store_status(run_uuid,start_time,end_time,"push",0)
+					else:
+						self.logger.error("not all the instances are running")
+						end_time = time.time()
+						self.__store_status(run_uuid,start_time,end_time,"push",1,"not all the instances are running")
 				else:
 					self.logger.error("failed to push app" + app_name)
+					end_time = time.time()
 					self.__store_status(run_uuid,start_time,end_time,"push",1,"failed to push app" + app_name)
 			else:
 				self.logger.error("push request send failed")
+				end_time = time.time()
 				self.__store_status(run_uuid,start_time,end_time,"push",1, "push request send failed")
 		else:
 			raise Exception("can not found app config file")
@@ -216,6 +247,8 @@ if __name__ == "__main__":
 	config_file = open(config_file_path)
 	config = json.load(config_file)
 	robot_app = Robot("http://9.181.27.232:8888", config)
-	robot_app.auto_run()
+	while True:
+		robot_app.auto_run()
+		time.sleep(600)
 
 
