@@ -65,7 +65,7 @@ class Monster(Thread):
     
     def createApp(self):
         logger.info("create app!!!")
-        _r, _m  = AppFactory.push(self.id, self.instances, self.cpu, self.mem, self.image, self.cmd)
+        _r, _m  = AppFactory.push(self.id, 1, self.cpu, self.mem, self.image, self.cmd)
         return _r
     
     def scaleApp(self):
@@ -82,7 +82,7 @@ class Monster(Thread):
                 if _instances >= self.instances:
                     _instances = self.instances
                 AppFactory.scale(self.id, _instances)
-                time.sleep(30)
+                time.sleep(60)
 
     def deleteApp(self):
         logger.info("delete app")
@@ -95,8 +95,11 @@ class Monster(Thread):
         _r = self.createApp()
         if _r :
             while self.stoped != True:
-                self.scaleApp()
-                time.sleep(5)
+                try:
+                    self.scaleApp()
+                    time.sleep(5)
+                except Exception, e:
+                    pass
             _r = self.deleteApp()
         else:
             logger.info("app create failed")

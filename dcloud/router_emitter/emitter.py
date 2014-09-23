@@ -154,7 +154,6 @@ class Worker(threading.Thread):
                 _host = queue.get(timeout=2)
                 logger.info("handler host %s" %(_host))
             except Exception, e:
-                traceback.print_exc()
                 pass
             if _host == None:
                 continue

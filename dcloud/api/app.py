@@ -8,7 +8,10 @@ class AppFactory(object):
         _body = '''
         {
           "container": {
-               "image": "docker:///%s"
+               "type": "DOCKER",
+               "docker": {
+                   "image": "%s"
+               }
           },
           "id": "%s",
           "instances": "%s",
