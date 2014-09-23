@@ -96,6 +96,9 @@ function push(){
       if [ "$status_code" -eq "200" ]; then
         echo "$content"
         succeed "succeed to push app $app_name"
+        echo "checking the status of app $app_name"
+        check_app_status "$manifest_path" "$target_url"
+        exit $? 
       else
         echo "$content"
         error "failed to push app $app_name"
@@ -107,6 +110,42 @@ function push(){
     fi
   else
     error "please target dCloud first"
+    exit 1
+  fi
+}
+
+function check_app_status(){
+  manifest="$1"
+  target_url="$2"
+  id=`cat "$manifest" | ruby -rjson -e "puts JSON[STDIN.read]['id']"`
+  instances=`cat "$manifest" | ruby -rjson -e "puts JSON[STDIN.read]['instances'].to_s"`
+  output=`curl --stderr /dev/null -s -X GET -H "Content-Type: application/json" -w push_http_code:%{http_code} ${target_url}/apps/${id}`
+  status_code=`echo $output | sed "s/.*push_http_code:\([0-9]\+\)/\1/"`
+  content=`echo $output | sed "s/\(.*\)push_http_code:\([0-9]\+\)$/\1/"`
+  if [ "$status_code" -eq "200" ]; then
+    running_instances=`echo "$content" | ruby -rjson -e "puts JSON[STDIN.read]['content']['running'].to_s"`
+    wait_times=0
+    while [ "$running_instances" -ne "$instances" ]
+    do
+      if [ "$wait_times" -gt "6" ]; then
+        warning "instances running: $running_instances/$instances , please check it on ui!"
+        exit 0
+      fi
+      echo "instances running: $running_instances/$instances"
+      output=`curl --stderr /dev/null -s -X GET -H "Content-Type: application/json" -w push_http_code:%{http_code} ${target_url}/apps/${id}`
+      status_code=`echo $output | sed "s/.*push_http_code:\([0-9]\+\)/\1/"`
+      content=`echo $output | sed "s/\(.*\)push_http_code:\([0-9]\+\)$/\1/"`
+      if [ "$status_code" -eq "200" ]; then
+        running_instances=`echo "$content" | ruby -rjson -e "puts JSON[STDIN.read]['content']['running'].to_s"`
+      else
+        error "$content"
+        exit 1
+      fi
+      sleep 5
+      wait_times=$(($wait_times + 1))
+    done
+  else
+    echo "$content"
     exit 1
   fi
 }
@@ -140,6 +179,9 @@ function scale(){
       if [ "$status_code" -eq "200" ]; then
         echo "$content"
         succeed "succeed to scale app $app_name"
+        echo "checking the status of app $app_name"
+        check_app_status "$manifest_path" "$target_url"
+        exit $?
       else
         echo "$content"
         error "failed to scale app $app_name"

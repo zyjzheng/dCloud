@@ -1,10 +1,12 @@
 {
   "container": {
-    "image": "docker:///9.181.27.216/helloworld:latest"
+    "type": "DOCKER",
+    "docker": {
+      "image": "9.181.27.216/robot_app"
+    }
   },
-  "constraints": [
-     ["hostname","UNIQUE",""]
-  ],
-  "id": "testnew",
-  "instances": "2"
+  "id": "robot-app",
+  "instances": "5",
+  "cpus": "0.2",
+  "mem": "64"
 }
