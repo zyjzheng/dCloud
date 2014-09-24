@@ -8,6 +8,7 @@ import traceback
 import httplib
 from httpclient import HttpClient
 from logger import DCLogger
+from influxdb import InfluxDBClient
 
 cur_dir = os.path.abspath(os.path.split(inspect.getfile(inspect.currentframe()))[0])
 class Robot:
@@ -16,17 +17,17 @@ class Robot:
 		self.config = config
 		log_file = config["log_file"]
 		level = config["level"]
-		self.db_path = config["db"]
 		self.target_url  = target
 		self.logger = DCLogger(log_file, level)
 		DCLogger.set_default_logger(self.logger)
 
 	def init_db(self):
-		self.state_db = sqlite3.connect(self.db_path)
-		self.cursor = self.state_db.cursor()
-		self.cursor.execute("create table if not exists history(id varchar(255), start_time decimal, end_time decimal, primary key(id))")
-		self.cursor.execute("create table if not exists action_status(id varchar(255), last decimal, action varchar(255), status integer, description text, primary key(id, action))")		
-		self.state_db.commit()
+                influxdb_host = self.config["db"]["influxdb_host"]
+                influxdb_port = self.config["db"]["influxdb_port"]
+                influxdb_user = self.config["db"]["influxdb_user"]
+                influxdb_password = self.config["db"]["influxdb_password"]
+                influxdb_database = self.config["db"]["database"]
+                self.state_db = InfluxDBClient(influxdb_host, influxdb_port, influxdb_user, influxdb_password, influxdb_database)
 
 	def auto_run(self):
 		run_uuid = str(uuid.uuid1())
@@ -36,30 +37,59 @@ class Robot:
 		self.dClient = HttpClient(self.target_url)
 		self.init_db()
 		try:
+			print("check target")
 			self.check_target(run_uuid)
+			print("check push")
 			self.check_push(run_uuid, app_name)
+			print("check create host")
 			self.check_create_host(run_uuid, host)
+			print("check map app")
 			self.check_map_app(run_uuid,app_name,host)
 			#self.check_visit_app(run_uuid,host)
-			self.check_unmap_app(run_uuid,app_name,host)
-			self.check_delete_host(run_uuid, host)
-			self.check_delete_app(run_uuid, app_name)
-			end_time = time.time()
-			self.cursor.execute("insert into history values(?,?,?)",(run_uuid,start_time,end_time))
-			self.state_db.commit()
+
+
+
 		except Exception, e:
 			trace = traceback.format_exc()
+			print(trace)
 			self.logger.error(trace)
 		finally:
-			self.cursor.close()
-			self.state_db.close()
+			try:
+				print("check unmap app")
+				self.check_unmap_app(run_uuid,app_name,host)
+			except Exception, e:
+				trace = traceback.format_exc()
+				print(trace)
+				self.logger.error(trace)
+			try:
+				print("check delete host")
+				self.check_delete_host(run_uuid, host)
+			except Exception, e:
+				trace = traceback.format_exc()
+				print(trace)
+				self.logger.error(trace)				
+			try:
+				print("check delete app")
+				self.check_delete_app(run_uuid, app_name)
+			except Exception, e:
+				trace = traceback.format_exc()
+				print(trace)
+				self.logger.error(trace)				
 
 	def __store_status(self, run_id, start_time, end_time, action, status, description=""):
-		self.cursor.execute("insert into action_status values(?,?,?,?,?)",(run_id, end_time - start_time, action ,status,description))
-		self.state_db.commit()
+		json_body = [{
+			"points": [
+            		[run_id, start_time, end_time, action, status,description]
+        		],
+			"name": "check_data",
+			"columns": ["run_id", "start_time", "end_time","action","status","description"]
+    			}]
+		self.state_db.write_points(json_body)
+		
 
 	def __get_action_status(self, result):
 		content = result[1]
+		print(str(content))
 		status = json.loads(content)["status"]
 		return status
 

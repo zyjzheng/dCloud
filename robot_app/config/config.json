@@ -3,5 +3,12 @@
 	"level": "DEBUG",
 	"db": "/root/robot_app.db",
 	"domain": "dcloud.bluemix.cdl.ibm.com",
-	"vulcan_port": 80	
+	"vulcan_port": 80,
+	"db":{
+        "influxdb_host":"9.181.27.234",
+        "influxdb_port":8086,
+        "influxdb_user":"root",
+        "influxdb_password":"root",
+        "database":"cadvisor"
+	}
 }
