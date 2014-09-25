@@ -218,14 +218,14 @@ class Worker(threading.Thread):
             try:
                 _host = queue.get(timeout=2)
                 logger.info("handler host %s" %(_host))
+                if _host == None:
+                    continue
+                if _host == "*":
+                    refreshRouter()
+                else:
+                    refreshRouter(_host)
             except Exception, e:
                 pass
-            if _host == None:
-                continue
-            if _host == "*":
-                refreshRouter()
-            else:
-                refreshRouter(_host)
 
 worker = Worker()
 
