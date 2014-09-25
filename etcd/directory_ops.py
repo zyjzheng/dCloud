@@ -1,17 +1,25 @@
 from requests.exceptions import HTTPError
 from requests.status_codes import codes
 
-from etcd.exceptions import EtcdAlreadyExistsException
+from etcd.exceptions import EtcdAlreadyExistsException, translate_exceptions
 from etcd.common_ops import CommonOps
+
+# TODO(dustin): We may need a directory-specific version of 
+#               translate_exceptions. We'll see.
+
+# TODO(dustin): We need a 
 
 
 class DirectoryOps(CommonOps):
     """Functions specific to directory management."""
 
+    @translate_exceptions
     def create(self, path, ttl=None):
         """A normal node-set will implicitly create directories on the way to 
         setting a value. This call exists for when you'd like to -explicitly- 
         create one.
+
+        We implicitly fail if the directory already exists.
 
         :param path: Key
         :type path: string
@@ -25,7 +33,7 @@ class DirectoryOps(CommonOps):
         """
 
         fq_path = self.get_fq_node_path(path)
-        data = { 'dir': 'true' }
+        data = { 'dir': 'true', 'prevExist':'false' }
 
         if ttl is not None:
             data['ttl'] = ttl
@@ -46,6 +54,7 @@ class DirectoryOps(CommonOps):
 
             raise
 
+    @translate_exceptions
     def delete(self, path, current_value=None, current_index=None):
         """Delete the given directory. It must be empty.
 
@@ -68,6 +77,7 @@ class DirectoryOps(CommonOps):
         parameters = { 'dir': 'true' }
         return self.client.send(2, 'delete', fq_path, parameters=parameters)
 
+    @translate_exceptions
     def delete_if_index(self, path, current_index):
         """Only delete the given directory if the node is at the given index. 
         It must be empty.
@@ -85,6 +95,7 @@ class DirectoryOps(CommonOps):
         return self.compare_and_delete(path, is_dir=True, 
                                        current_index=current_index)
 
+    @translate_exceptions
     def delete_recursive(self, path, current_index=None):
         """Delete the given directory, along with any children.
 
@@ -107,6 +118,7 @@ class DirectoryOps(CommonOps):
         parameters = { 'dir': 'true', 'recursive': 'true' }
         return self.client.send(2, 'delete', fq_path, parameters=parameters)
 
+    @translate_exceptions
     def delete_recursive_if_index(self, path, current_index):
         """Only delete the given directory (and its children) if the node is at 
         the given index. 
@@ -123,4 +135,4 @@ class DirectoryOps(CommonOps):
 
         return self.compare_and_delete(path, is_recursive=True, 
                                        current_index=current_index)
-
+        

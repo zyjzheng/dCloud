@@ -1,23 +1,25 @@
-from requests.exceptions import HTTPError
+import logging
+
+from requests.exceptions import HTTPError, ChunkedEncodingError
 from requests.status_codes import codes
 
-from etcd.exceptions import EtcdPreconditionException
+from etcd.exceptions import EtcdPreconditionException, translate_exceptions, \
+                            EtcdEmptyResponseError
 from etcd.common_ops import CommonOps
 from etcd.response import ResponseV2 
+
+_logger = logging.getLogger(__name__)
 
 
 class NodeOps(CommonOps):
     """Common key-value functions."""
 
-    def get(self, path, recursive=False):
+    @translate_exceptions
+    def get(self, path):
         """Get the given node.
 
         :param path: Node key
         :type path: string
-
-        :param recursive: Node is a directory, and we want to read it 
-                          recursively.
-        :type recursive: bool
 
         :returns: Response object
         :rtype: :class:`etcd.response.ResponseV2`
@@ -26,26 +28,9 @@ class NodeOps(CommonOps):
         """
 
         fq_path = self.get_fq_node_path(path)
+        return self.client.send(2, 'get', fq_path)
 
-        parameters = { }
-
-        if recursive is True:
-            parameters['recursive'] = 'true'
-
-        try:
-            return self.client.send(2, 'get', fq_path, parameters=parameters)
-        except HTTPError as e:
-            if e.response.status_code == codes.not_found:
-                try:
-                    j = e.response.json()
-                except ValueError:
-                    pass
-                else:
-                    if j['errorCode'] == 100:
-                        raise KeyError(path)
-
-            raise
-
+    @translate_exceptions
     def set(self, path, value, ttl=None):
         """Set the given node.
 
@@ -70,37 +55,7 @@ class NodeOps(CommonOps):
 
         return self.client.send(2, 'put', fq_path, value, data=data)
 
-    def wait(self, path, recursive=False):
-        """Long-poll on the given path until it changes.
-
-        :param path: Node key
-        :type path: string
-
-        :param recursive: Wait on any change in the given directory or any of 
-                          its descendants.
-        :type recursive: bool
-
-        :returns: Response object
-        :rtype: :class:`etcd.response.ResponseV2`
-
-        :raises: KeyError
-        """
-
-        fq_path = self.get_fq_node_path(path)
-
-        parameters = { 'wait': 'true' }
-
-        if recursive is True:
-            parameters['recursive'] = 'true'
-
-        try:
-            return self.client.send(2, 'get', fq_path, parameters=parameters)
-        except HTTPError as e:
-            if e.response.status_code == codes.not_found:
-                raise KeyError(path)
-
-            raise
-
+    @translate_exceptions
     def delete(self, path, current_value=None, current_index=None):
         """Delete the given node.
 
@@ -123,10 +78,9 @@ class NodeOps(CommonOps):
                                            current_index=current_index)
 
         fq_path = self.get_fq_node_path(path)
-# TODO: If this raises an error for an non-existent key, we'll have to 
-#       translate it to a KeyError.
         return self.client.send(2, 'delete', fq_path)
 
+    @translate_exceptions
     def delete_if_value(self, path, current_value):
         """Only delete the given node if it's at the given value. 
 
@@ -143,6 +97,7 @@ class NodeOps(CommonOps):
         return self.compare_and_delete(path, is_dir=False, 
                                        current_value=current_value)
 
+    @translate_exceptions
     def delete_if_index(self, path, current_index):
         """Only delete the given node if it's at the given index. 
 
@@ -159,6 +114,7 @@ class NodeOps(CommonOps):
         return self.compare_and_delete(path, is_dir=False, 
                                        current_index=current_index)
 
+    @translate_exceptions
     def compare_and_swap(self, path, value, current_value=None, 
                          current_index=None, prev_exists=None, ttl=None):
         """The base compare-and-swap function for atomic comparisons. A  
@@ -209,15 +165,10 @@ class NodeOps(CommonOps):
         if ttl is not None:
             data['ttl'] = ttl
 
-        try:
-            return self.client.send(2, 'put', fq_path, value, data=data, 
-                                    parameters=parameters)
-        except HTTPError as e:
-            if e.response.status_code == codes.precondition_failed:
-                raise EtcdPreconditionException()
+        return self.client.send(2, 'put', fq_path, value, data=data, 
+                                parameters=parameters)
 
-            raise
-
+    @translate_exceptions
     def create_only(self, path, value, ttl=None):
         """A convenience function that will only set a node if it doesn't 
         already exist.
@@ -238,6 +189,7 @@ class NodeOps(CommonOps):
         # This will have a return "action" of "create".
         return self.compare_and_swap(path, value, prev_exists=False, ttl=ttl)
 
+    @translate_exceptions
     def update_only(self, path, value, ttl=None):
         """A convenience function that will only set a node if it already
         exists.
@@ -258,6 +210,7 @@ class NodeOps(CommonOps):
         # This will have a return "action" of "update".
         return self.compare_and_swap(path, value, prev_exists=True, ttl=ttl)
 
+    @translate_exceptions
     def update_if_index(self, path, value, current_index, ttl=None):
         """A convenience function that will only set a node if its existing
         "modified index" matches.
@@ -281,6 +234,7 @@ class NodeOps(CommonOps):
         # This will have a return "action" of "compareAndSwap".
         return self.compare_and_swap(path, value, current_index=current_index, ttl=ttl)
 
+    @translate_exceptions
     def update_if_value(self, path, value, current_value, ttl=None):
         """A convenience function that will only set a node if its existing value
         matches.
@@ -303,3 +257,7 @@ class NodeOps(CommonOps):
 
         # This will have a return "action" of "compareAndSwap".
         return self.compare_and_swap(path, value, current_value=current_value, ttl=ttl)
+
+    @translate_exceptions
+    def wait(self, path):
+        return super(NodeOps, self).wait(path)

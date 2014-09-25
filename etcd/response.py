@@ -1,4 +1,7 @@
 import pytz
+import simplejson
+
+import etcd.exceptions
 
 from collections import namedtuple
 from os.path import basename
@@ -162,9 +165,9 @@ class ResponseV2AliveDirectoryNode(ResponseV2DirectoryNode):
     """
 
     def initialize(self, node):
-        if 'nodes' in node:
+        if node.get('dir', False) is True:
             self.__is_collection = True
-            self.__raw_nodes = node['nodes']
+            self.__raw_nodes = node.get('nodes', [])
         else:
             self.__is_collection = False
             self.__raw_nodes = None
@@ -221,7 +224,14 @@ class ResponseV2(object):
     """
 
     def __init__(self, response, request_verb, request_path):
-        response_raw = response.json()
+        try:
+            response_raw = response.json()
+        except simplejson.JSONDecodeError:
+            # Bug #1120: Wait will timeout with a JSON-message of zero-length.
+            if response.text == '':
+                raise etcd.exceptions.EtcdEmptyResponseError()
+            else:
+                raise
 
         self.node = _build_node_object(response_raw['action'], 
                                        response_raw['node'])

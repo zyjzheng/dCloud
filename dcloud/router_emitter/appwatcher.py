@@ -36,7 +36,7 @@ class AppWatcher(object):
         @watchmethod
         def watcher(event):
             self.init_watcher()
-            self.logger.info(dir(event))
+            #self.logger.info(dir(event))
             self.logger.info(event.type_name)
             type_name = event.type_name
             path = event.path

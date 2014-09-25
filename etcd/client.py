@@ -1,5 +1,6 @@
 import requests
 import ssl
+import logging
 
 from os import environ
 from requests.exceptions import ConnectionError
@@ -16,6 +17,23 @@ from etcd.inorder_ops import InOrderOps
 from etcd.modules.lock import LockMod
 from etcd.modules.leader import LeaderMod
 from etcd.response import ResponseV2
+
+logging.getLogger('requests.packages.urllib3').setLevel(logging.WARN)
+
+_logger = logging.getLogger(__name__)
+
+_SSL_DO_VERIFY = bool(int(environ.get('PEC_SSL_DO_VERIFY', '1')))
+
+_SSL_CA_BUNDLE_FILEPATH = environ.get(
+                            'PEC_SSL_CA_BUNDLE_FILEPATH', 
+                            '') or None
+_SSL_CLIENT_CRT_FILEPATH = environ.get(
+                            'PEC_SSL_CLIENT_CRT_FILEPATH', 
+                            '') or None
+
+_SSL_CLIENT_KEY_FILEPATH = environ.get(
+                            'PEC_SSL_CLIENT_KEY_FILEPATH', 
+                            '') or None
 
 
 class _Ssl3HttpAdapter(HTTPAdapter):
@@ -53,7 +71,7 @@ class _Modules(object):
 
     @property
     def leader(self):
-        """Return an instance of the class having the leader-election
+        """Return an instance of the class having the leader-election 
         functionality.
 
         :rtype: :class:`etcd.modules.leader.LeaderMod`
@@ -67,7 +85,7 @@ class _Modules(object):
 
 
 class Client(object):
-    """The main channel of functionality for the client. Connects to the
+    """The main channel of functionality for the client. Connects to the 
     server, and provides functions via properties.
 
     :param host: Hostname or IP of server
@@ -78,10 +96,6 @@ class Client(object):
 
     :param is_ssl: Whether to use 'http://' or 'https://'.
     :type is_ssl: bool
-
-    :param debug: Whether to print debug verbosity (can be provided as the
-                  ETCD_DEBUG environment variable, as well)
-    :type debug: bool
 
     :param ssl_do_verify: Whether to verify the certificate hostname.
     :type ssl_do_verify: bool or None
@@ -98,32 +112,53 @@ class Client(object):
     :raises: ValueError
     """
 
-    def __init__(self, host='127.0.0.1', port=4001,
-                 is_ssl=False, debug=None, ssl_do_verify=None,
-                 ssl_ca_bundle_filepath=None, ssl_client_cert_filepath=None,
-                 ssl_client_key_filepath=None):
-        if debug is None:
-            debug = bool(int(environ.get('PEC_DEBUG', '0')))
+    def __init__(self, host='127.0.0.1', port=4001, 
+                 is_ssl=False, ssl_do_verify=_SSL_DO_VERIFY, 
+                 ssl_ca_bundle_filepath=_SSL_CA_BUNDLE_FILEPATH, 
+                 ssl_client_cert_filepath=_SSL_CLIENT_CRT_FILEPATH, 
+                 ssl_client_key_filepath=_SSL_CLIENT_KEY_FILEPATH):
 
-        self.__debug = debug
+        if ssl_do_verify is not None:
+            _logger.debug("SSL: Explicit verify setting given: [%s]", ssl_do_verify)
+            self.__ssl_verify = ssl_do_verify
 
-        # These are set from the parameters.
-        self.__ssl_config_do_verify = ssl_do_verify
-        self.__ssl_config_ca_bundle_filepath = ssl_ca_bundle_filepath
-        self.__ssl_config_client_cert_filepath = ssl_client_cert_filepath
-        self.__ssl_config_client_key_filepath = ssl_client_key_filepath
+        elif ssl_ca_bundle_filepath is not None:
+            _logger.debug("SSL: We'll be verifying against a CA bundle: [%s]", 
+                          ssl_ca_bundle_filepath)
 
-        # These are set from the processing of SSL configuration.
-        self.__ssl_verify = None
-        self.__ssl_cert = None
+            self.__ssl_verify = ssl_ca_bundle_filepath
+
+        else:
+            _logger.debug("SSL: We'll verify the CA certificate, by default.")
+
+            self.__ssl_verify = True
+
+        if ssl_client_cert_filepath is None:
+            _logger.debug("SSL: No client key/certificate will be used.")
+            self.__ssl_cert = None
+
+        elif ssl_client_key_filepath is not None:
+            _logger.debug("SSL: Client key and certificate will be used: "
+                          "KEY=[%s] CERTIFICATE=[%s]",
+                          ssl_client_key_filepath, ssl_client_cert_filepath)
+
+            self.__ssl_cert = \
+                (ssl_client_cert_filepath, 
+                 ssl_client_key_filepath)
+
+        else:
+            _logger.debug("SSL: Client certificate will be used (without a "
+                          "key): [%s]", ssl_client_cert_filepath)
+
+            self.__ssl_cert = ssl_client_cert_filepath
 
         scheme = 'http' if is_ssl is False else 'https'
         self.__prefix = ('%s://%s:%s' % (scheme, host, port))
-        self.debug("PREFIX= [%s]" % (self.__prefix))
-
-        self.__collect_ssl_config()
+        _logger.debug("PREFIX= [%s]", self.__prefix)
 
         self.__session = requests.Session()
+
+        # Define an adapter for when SSL is requested.
         self.__session.mount('https://', _Ssl3HttpAdapter())
 
 # TODO: Remove the version check after debugging.
@@ -138,10 +173,10 @@ class Client(object):
                             for machine_info
                             in self.server.get_machines()]
 
-        self.debug("Cluster machines: %s" % (self.__machines))
+        _logger.debug("Cluster machines: %s", self.__machines)
 
-        # This will fail if the given server does appear in the published list
-        # of servers. This might only happen because of a hostname being used
+        # This will fail if the given server does appear in the published list 
+        # of servers. This might only happen because of a hostname being used 
         # instead of an IP, or vice-versa.
         self.__machine_index = None
         i = 0
@@ -154,71 +189,16 @@ class Client(object):
 
         if self.__machine_index is None:
             raise ValueError("Could not identify given prefix [%s] among "
-                             "published prefixes: %s" %
+                             "published prefixes: %s" % 
                              (self.__prefix, self.__machines))
 
-        self.debug("The initial machine is at index (%d)." %
-                   (self.__machine_index))
+        _logger.debug("The initial machine is at index (%d).",
+                      self.__machine_index)
 
     def __str__(self):
         return ('<ETCD %s>' % (self.__prefix))
 
-    def __collect_ssl_config(self):
-        verify = None
-        cert = None
-
-        if self.__ssl_config_do_verify is not None:
-            verify = 1 if self.__ssl_config_do_verify is True else 0
-        else:
-            verify = environ.get('PEC_SSL_DO_VERIFY')
-
-        if self.__ssl_config_ca_bundle_filepath is not None:
-            ca_bundle_filepath = self.__ssl_config_ca_bundle_filepath
-        else:
-            ca_bundle_filepath = environ.get('PEC_SSL_CA_BUNDLE_FILEPATH')
-
-        if verify is not None:
-            verify = bool(int(verify))
-        elif ca_bundle_filepath is not None:
-            verify = ca_bundle_filepath
-        else:
-            verify = True
-
-        cert = None
-        if self.__ssl_config_client_cert_filepath is not None:
-            client_cert_filepath = self.__ssl_config_client_cert_filepath
-        else:
-            client_cert_filepath = environ.get('PEC_SSL_CLIENT_CERT_FILEPATH')
-
-        if client_cert_filepath is not None:
-            if self.__ssl_config_client_key_filepath is not None:
-                client_key_filepath = self.__ssl_config_client_key_filepath
-            else:
-                client_key_filepath = environ.get(
-                                        'PEC_SSL_CLIENT_KEY_FILEPATH')
-
-            if client_key_filepath is not None:
-                cert = (client_cert_filepath, client_key_filepath)
-            else:
-                cert = client_cert_filepath
-
-        if verify is not None or cert is not None:
-            self.debug("SSL: verify=[%s] cert=[%s]" % (verify, cert))
-
-        self.__ssl_verify = verify
-        self.__ssl_cert = cert
-
-    def debug(self, message):
-        """Print a debug message during debug mode.
-
-        :param message: Message to print
-        :type message: string
-        """
-
-        if self.__debug is True:
-            print("EC: %s" % (message))
-
-    def send(self, version, verb, path, value=None, parameters=None, data=None,
+    def send(self, version, verb, path, value=None, parameters=None, data=None, 
              module=None, return_raw=False, allow_reconnect=True):
         """Build and execute a request.
 
@@ -231,7 +211,7 @@ class Client(object):
         :param path: URL path
         :type path: string
 
-        :param value: Value to be converted to string and passed as "value" in
+        :param value: Value to be converted to string and passed as "value" in 
                       the POST data.
         :type value: scalar or None
 
@@ -244,8 +224,8 @@ class Client(object):
         :param module: Name of the etcd module that hosts the functionality.
         :type module: string or None
 
-        :param return_raw: Whether to return a
-                           :class:`etcd.response.ResponseV2` object or the raw
+        :param return_raw: Whether to return a 
+                           :class:`etcd.response.ResponseV2` object or the raw 
                            Requests response.
         :type return_raw: bool
 
@@ -277,29 +257,29 @@ class Client(object):
         if value is not None:
             data['value'] = value
 
-        args = { 'params': parameters,
-                 'data': data,
-                 'verify': self.__ssl_verify,
+        args = { 'params': parameters, 
+                 'data': data, 
+                 'verify': self.__ssl_verify, 
                  'cert': self.__ssl_cert }
 
-        self.debug("Request(%s)=[%s] params=[%s] data_keys=[%s]" %
-                   (verb, url, parameters, args['data'].keys()))
+        _logger.debug("Request(%s)=[%s] params=[%s] data_keys=[%s]",
+                      verb, url, parameters, args['data'].keys())
 
         send = getattr(self.__session, verb)
-
+    
         while 1:
             try:
                 r = send(url, **args)
             except ConnectionError as e:
-                self.debug("Connection error with [%s] [%s]: %s" %
-                           (self.__prefix, e.__class__.__name__, str(e)))
+                _logger.debug("Connection error with [%s] [%s]: %s",
+                              self.__prefix, e.__class__.__name__, str(e))
 
                 if allow_reconnect is False:
                     raise
             else:
                 break
 
-            # If we get here, there was a connection problem. Rotate the server
+            # If we get here, there was a connection problem. Rotate the server 
             # that we're using, excluding any that have recently failed.
 
             now_dt = datetime.now()
@@ -320,13 +300,13 @@ class Client(object):
                 i += 1
 
             if elected is None:
-                raise SystemError("All servers have failed: %s" %
+                raise SystemError("All servers have failed: %s" % 
                                   (self.__machines,))
 
             self.__prefix = elected
             self.__machine_index = machine_index
 
-            self.debug("Retrying with next machine: %s" % (self.__prefix))
+            _logger.debug("Retrying with next machine: %s", self.__prefix)
 
         r.raise_for_status()
 
@@ -363,7 +343,7 @@ class Client(object):
 
     @property
     def node(self):
-        """Return an instance of the class having the general node
+        """Return an instance of the class having the general node 
         functionality.
 
         :rtype: :class:`etcd.node_ops.NodeOps`
@@ -403,7 +383,7 @@ class Client(object):
 
     @property
     def inorder(self):
-        """Return an instance of the class having the "in-order keys"
+        """Return an instance of the class having the "in-order keys" 
         functionality.
 
         :rtype: :class:`etcd.inorder_ops.InOrderOps`
@@ -417,7 +397,7 @@ class Client(object):
 
     @property
     def module(self):
-        """Return an instance of the class that hosts the functionality
+        """Return an instance of the class that hosts the functionality 
         provided by individual modules.
 
         :rtype: :class:`etcd.client._Modules`

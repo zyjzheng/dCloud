@@ -4,21 +4,8 @@ from dcloud.utils.config import Config
 from dcloud.utils.log import logger
 from dcloud.utils.restful import Restful
 
-REGISTRY_PREFIX="/apps"
-TTL=60
-
 def callRestApi(_m, _u, _p, _b=None):
     return Restful.callRestApi(_m, _u, _p, _b)
-
-def getEtcd():
-    _etcd_host = Config.get("etcd.host")
-    _etcd_port = string.atoi(Config.get("etcd.port"))
-    _etcd = etcd.Client(host=_etcd_host,port=_etcd_port)
-    return _etcd
-
-def etcdNodeSet(path, value, ttl=None):
-    _etcd = getEtcd()
-    _etcd.node.set(path, value, ttl)
 
 def createUpstream(url, upstream):
     _body='''{
@@ -62,57 +49,17 @@ def getHosts(url):
     _status,_msg,_resp=callRestApi("GET", url, "/v1/hosts")
     return json.loads(_resp)['Hosts']
 
-def init():
-    initRegistry()
-
-def initRegistry():
-    _etcd = getEtcd()
-    try:
-        _etcd.directory.create(REGISTRY_PREFIX)
-    except Exception, e:
-        pass
-
-def etcdNodeExist(path):
-    try:
-       _etcd = getEtcd()
-       _tmp = _etcd.node.get(path)
-       if _tmp != None:
-           return True
-    except Exception, e:
-       pass
-    return False
-
-def etcdGetNode(path):
-    try:
-        _etcd = getEtcd()
-        _tmp = _etcd.node.get(path)
-        return _tmp
-    except Exception,e:
-        pass
-    return None
-
-def etcdCreateDir(path):
-    if etcdNodeExist(path) is not True:
-        _etcd = getEtcd()
-        _etcd.directory.create(path)
-
 def refreshRegistry(host=None):
     _marathon_url = Config.get("marathon.url")
-    _status,_msg,_resp= callRestApi("GET", _marathon_url, "/v2/apps")
-    if _status != 200:
-        logger.info("Failed to call marathon api %s!!" % (_msg))
-        return
-    _apps = json.loads(_resp)['apps']
-    for _app in _apps:
-        etcdCreateDir(REGISTRY_PREFIX +""+ _app['id']+"/instances")
-        _status,_msg,_resp= callRestApi("GET", _marathon_url, "/v2/apps/%s/tasks" % (_app['id']))
-        if _status != 200:
-            continue
-        _tasks = json.loads(_resp)['tasks']
-        for _t in _tasks:
-            etcdCreateDir(REGISTRY_PREFIX+"/"+_app['id'] + "/instances/")
-            if etcdNodeExist(REGISTRY_PREFIX+""+_app['id'] + "/instances/" + _t['id']) is False:
-                etcdNodeSet(REGISTRY_PREFIX+""+_app['id'] + "/instances/" + _t['id'], "{}", TTL)
+    _etcd_host = Config.get("etcd.host")
+    _etcd_port = string.atoi(Config.get("etcd.port"))
+    _vulcand_url = Config.get("vulcand.url")
+    _etcd = etcd.Client(host=_etcd_host,port=_etcd_port)
+    try:
+        _hosts = _etcd.node.get("/")
+    except Exception, e:
+        pass
+
 
 def refreshRouter(host=None):
     
@@ -229,23 +176,6 @@ class Worker(threading.Thread):
 
 worker = Worker()
 
-class Registry(threading.Thread):
-    _stop = False
-    def stop(self):
-        self._stop = True
-    def run(self):
-        while(self._stop is not True):
-             try:
-                 logger.info("refresh registry!!!!!!!!!!!!!!!!")
-                 refreshRegistry()
-                 logger.info("end registry!!!!!!!!!!!!!!!!")
-                 time.sleep(15)
-             except Exception,e:
-                 traceback.print_exc()
-
-
-registry = Registry()
-
 class Emitter:
     
     @staticmethod
@@ -262,11 +192,8 @@ class Emitter:
 
     @staticmethod
     def run():
-        init()
-        registry.start()
         worker.start()
 
     @staticmethod
     def stop():
-        registry.stop()
         worker.stop()
