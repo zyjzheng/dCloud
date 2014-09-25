@@ -19,9 +19,9 @@ etcdctl="$base_dir/etcdctl"
 log_file="${log_dir}/unmap.log"
 
 
-$etcdctl --peers $etcd_server ls /vulcand/hosts/$router/apps/$app >> $log_file 2>&1
+$etcdctl --peers $etcd_server ls /apps/$app/routers/$router >> $log_file 2>&1
 if [ $? -eq 0 ]; then
-  $etcdctl --peers $etcd_server rmdir /vulcand/hosts/$router/apps/$app >> $log_file 2>&1
+  $etcdctl --peers $etcd_server rmdir /apps/$app/routers/$router >> $log_file 2>&1
   if [ $? -eq 0 ]; then
     succeed "succeed to unbind app $app to host $host"
   exit 0

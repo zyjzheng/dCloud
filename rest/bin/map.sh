@@ -23,9 +23,9 @@ then
   error "haven't created app $app yet!"
   exit 1
 fi
-$etcdctl --peers $etcd_server ls /vulcand/hosts/$router/ >> $log_file 2>&1
+$etcdctl --peers $etcd_server setdir /apps/$app/ >> $log_file 2>&1
 if [ $? -eq 0 ]; then
-  $etcdctl --peers $etcd_server setdir /vulcand/hosts/$router/apps/$app >> $log_file 2>&1
+  $etcdctl --peers $etcd_server setdir /apps/$app/routers/$router >> $log_file 2>&1
   if [ $? -eq 0 ]; then
     succeed "succeed to bind app $app to host $host"
     exit 0
