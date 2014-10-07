@@ -23,7 +23,7 @@ then
   error "haven't created app $app yet!"
   exit 1
 fi
-$etcdctl --peers $etcd_server setdir /apps/$app/ >> $log_file 2>&1
+$etcdctl --peers $etcd_server ls /apps/$app/ >> $log_file 2>&1
 if [ $? -eq 0 ]; then
   $etcdctl --peers $etcd_server setdir /apps/$app/routers/$router >> $log_file 2>&1
   if [ $? -eq 0 ]; then
